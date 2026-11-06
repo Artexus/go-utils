@@ -19,9 +19,10 @@ import (
 )
 
 type Cursor struct {
-	orders     SortOrderArray
-	values     []Value
-	isBackward bool
+	orders      SortOrderArray
+	values      []Value
+	isBackward  bool
+	isInclusive bool
 }
 
 func newGCM() (cipher.AEAD, error) {
@@ -229,10 +230,11 @@ func Decode(str string) (*Cursor, error) {
 //
 //	// Deterministic order (non-unique order + unique order)
 //	pagination.NewCursor(pagination.RawSort("created_at DESC, id DESC"), time.Now(), 10)
-func NewCursor(sortOrder OrderBuilder, isBackward bool, args ...any) (*Cursor, error) {
+func NewCursor(sortOrder OrderBuilder, isBackward bool, isInclusive bool, args ...any) (*Cursor, error) {
 	c := Cursor{orders: make([]SortOrder, 0), values: make([]Value, 0)}
 	c.orders = sortOrder.Build()
 	c.isBackward = isBackward
+	c.isInclusive = isInclusive
 
 	for _, arg := range args {
 		switch v := arg.(type) {
@@ -368,7 +370,7 @@ func (c *Cursor) Query(tx *gorm.DB, order string) *gorm.DB {
 		whereConds := []string{}
 		for j := 0; j < i; j++ {
 			if len(multi[j]) > 1 {
-				whereConds = append(whereConds, fmt.Sprintf("%s %s %s", c.buildColumnString(multi[j], mapPos, false), c.orders[multi[j][0]].Direction.GetOp(false), c.buildColumnString(multi[j], mapPos, true)))
+				whereConds = append(whereConds, fmt.Sprintf("%s %s %s", c.buildColumnString(multi[j], mapPos, false), c.orders[multi[j][0]].Direction.GetOp(c.isInclusive), c.buildColumnString(multi[j], mapPos, true)))
 				continue
 			}
 
@@ -396,10 +398,10 @@ func (c *Cursor) Query(tx *gorm.DB, order string) *gorm.DB {
 
 				whereConds = append(whereConds, fmt.Sprintf("%s IS NULL", c.orders[multi[i][0]].Key))
 			} else {
-				whereConds = append(whereConds, fmt.Sprintf("(%[1]s IS NULL OR %[1]s %s %s)", c.orders[multi[i][0]].Key, c.orders[multi[i][0]].Direction.GetOp(false), c.buildColumnString(multi[i], mapPos, true)))
+				whereConds = append(whereConds, fmt.Sprintf("(%[1]s IS NULL OR %[1]s %s %s)", c.orders[multi[i][0]].Key, c.orders[multi[i][0]].Direction.GetOp(c.isInclusive), c.buildColumnString(multi[i], mapPos, true)))
 			}
 		} else {
-			whereConds = append(whereConds, fmt.Sprintf("%s %s %s", c.buildColumnString(multi[i], mapPos, false), c.orders[multi[i][0]].Direction.GetOp(false), c.buildColumnString(multi[i], mapPos, true)))
+			whereConds = append(whereConds, fmt.Sprintf("%s %s %s", c.buildColumnString(multi[i], mapPos, false), c.orders[multi[i][0]].Direction.GetOp(c.isInclusive), c.buildColumnString(multi[i], mapPos, true)))
 		}
 
 		orConds = append(orConds, "("+strings.Join(whereConds, " AND ")+")")

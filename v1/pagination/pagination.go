@@ -63,7 +63,7 @@ func getCursor(orders SortOrderArray, entities any, value reflect.Value, isBackw
 		return nil, err
 	}
 
-	return NewCursor(orders, isBackward, val)
+	return NewCursor(orders, isBackward, false, val)
 }
 
 func GetResult[T any](pgn Pagination, entities T) (PaginationResult, error) {
@@ -145,8 +145,29 @@ func GetResult[T any](pgn Pagination, entities T) (PaginationResult, error) {
 }
 
 type PaginateOption struct {
-	// UseOffset forces to use offset based pagination instead.
+	// UseOffset forces to use offset based pagination.
 	UseOffset bool
+	// UseCursor forces to use cursor based pagination.
+	UseCursor bool
+}
+
+func (p *Pagination) initOffset() {
+	if p.Page < 1 {
+		p.Page = 1
+	}
+
+	p.Offset = p.Limit * (p.Page - 1)
+	return
+}
+
+func (p *Pagination) initCursor() (err error) {
+	if p.CursorEncoded != "" {
+		p.Cursor, err = Decode(p.CursorEncoded)
+	} else if p.Cursor == nil {
+		p.Cursor = &Cursor{}
+	}
+
+	return
 }
 
 // Paginate processes the pagination provided.
@@ -164,22 +185,22 @@ func (p *Pagination) Paginate(opts ...func(*PaginateOption)) (err error) {
 		p.Limit = MaximumLimit
 	}
 
-	if p.Page > 0 || option.UseOffset {
-		if p.Page < 1 {
-			p.Page = 1
-		}
-
-		p.Offset = p.Limit * (p.Page - 1)
+	if option.UseOffset {
+		p.initOffset()
 		return
 	}
 
-	if p.CursorEncoded != "" {
-		p.Cursor, err = Decode(p.CursorEncoded)
-	} else if p.Cursor == nil {
-		p.Cursor = &Cursor{}
+	if option.UseCursor {
+		err = p.initCursor()
+		return
 	}
 
-	return
+	if p.Page > 0 {
+		p.initOffset()
+		return
+	}
+
+	return p.initCursor()
 }
 
 func (p Pagination) IsCursor() bool {
